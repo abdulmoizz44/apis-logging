@@ -1,0 +1,24 @@
+groups:
+- name: anomaly.rules
+  interval: 1m
+  rules:
+  # 1) record a 5m rate
+  - record: job:http_requests:rate5m
+    expr: sum by (job) (rate(http_requests_total[5m]))
+
+  # 2) compute long-term mean & stddev (example: 1d window)
+  - record: job:http_requests:rate5m:avg_1d
+    expr: avg_over_time(job:http_requests:rate5m[1d])
+
+  - record: job:http_requests:rate5m:stddev_1d
+    expr: stddev_over_time(job:http_requests:rate5m[1d])
+
+  # 3) z-score alert: fire when current ≈ > 3σ above mean for 5m
+  - alert: HttpRequestsAnomalyHigh
+    expr: (job:http_requests:rate5m - job:http_requests:rate5m:avg_1d) / job:http_requests:rate5m:stddev_1d > 3
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "HTTP requests anomaly for {{ $labels.job }}"
+      description: "Z-score > 3 (rate = {{ $value }})"

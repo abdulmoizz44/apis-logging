@@ -20,13 +20,23 @@ scrape_configs:
     static_configs:
       - targets: ['node-exporter:9100']
 
-  - job_name: 'blackbox'
+  - job_name: 'anomaly-app'
+    static_configs:
+      - targets: ['anomaly-app:5000']
+    metrics_path: /api/health
+    scrape_interval: 5s
+
+  - job_name: 'blackbox-endpoints'
     metrics_path: /probe
     params:
       module: [http_2xx]
     static_configs:
       - targets:
-        - http://host.docker.internal:5000/api/health   # Flask app health endpoint
+        - http://anomaly-app:5000/api/users
+        - http://anomaly-app:5000/api/products
+        - http://anomaly-app:5000/api/orders
+        - http://anomaly-app:5000/api/suspicious
+        - http://anomaly-app:5000/api/health
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

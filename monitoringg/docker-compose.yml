@@ -28,7 +28,6 @@ services:
   anomaly-detector:
     build: ../anomaly
     depends_on:
-      - prometheus
-      - pushgateway
+      - grafana
     restart: always
 

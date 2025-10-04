@@ -113,8 +113,13 @@ class LogAnomalyDetector:
         
         for log in logs:
             try:
-                # Extract timestamp
-                timestamp = datetime.fromisoformat(log.get('timestamp', '').replace('Z', '+00:00'))
+                # Extract timestamp - handle empty timestamps
+                timestamp_str = log.get('timestamp', '')
+                if timestamp_str:
+                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                else:
+                    # Use current time if no timestamp
+                    timestamp = datetime.utcnow()
                 
                 # Extract features
                 feature_row = {

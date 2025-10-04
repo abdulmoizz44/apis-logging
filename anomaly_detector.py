@@ -19,7 +19,7 @@ class LogAnomalyDetector:
         self.loki_url = loki_url
         self.detection_interval = detection_interval
         self.log_buffer = deque(maxlen=1000)  # Keep last 1000 logs
-        self.anomaly_threshold = 0.1  # 10% of data points as anomalies
+        self.anomaly_threshold = 0.05  # 5% of data points as anomalies (less sensitive)
         self.models = {}
         self.scalers = {}
         self.feature_columns = [
@@ -40,21 +40,22 @@ class LogAnomalyDetector:
         self.models['isolation_forest'] = IsolationForest(
             contamination=self.anomaly_threshold,
             random_state=42,
-            n_estimators=100
+            n_estimators=200,  # More trees for better accuracy
+            max_samples=0.8    # Use 80% of data for training
         )
         
         # One-Class SVM for response time anomalies
         self.models['response_time_svm'] = OneClassSVM(
             nu=self.anomaly_threshold,
             kernel='rbf',
-            gamma='scale'
+            gamma='auto'  # Better gamma selection
         )
         
         # One-Class SVM for status code anomalies
         self.models['status_code_svm'] = OneClassSVM(
             nu=self.anomaly_threshold,
             kernel='rbf',
-            gamma='scale'
+            gamma='auto'  # Better gamma selection
         )
         
         # Initialize scalers
@@ -162,7 +163,8 @@ class LogAnomalyDetector:
     
     def detect_anomalies(self, df):
         """Detect anomalies using multiple ML models"""
-        if len(df) < 10:  # Need minimum data for training
+        if len(df) < 20:  # Need more data for better training
+            self.logger.info(f"Not enough data for anomaly detection: {len(df)} logs (need 20+)")
             return []
         
         anomalies = []
@@ -187,14 +189,14 @@ class LogAnomalyDetector:
                         }
                         anomalies.append(anomaly)
             
-            # Response time anomaly detection
+            # Response time anomaly detection - only flag very slow responses
             if 'response_time_ms' in df.columns and len(df) >= 10:
                 response_times = df[['response_time_ms']].values
                 response_times_scaled = self.scalers['response_time_svm'].fit_transform(response_times)
                 response_predictions = self.models['response_time_svm'].fit_predict(response_times_scaled)
                 
                 for i, prediction in enumerate(response_predictions):
-                    if prediction == -1:
+                    if prediction == -1 and df.iloc[i]['response_time_ms'] > 1000:  # Only flag >1 second
                         anomaly = {
                             'timestamp': df.iloc[i]['timestamp'],
                             'type': 'response_time_anomaly',
@@ -204,14 +206,14 @@ class LogAnomalyDetector:
                         }
                         anomalies.append(anomaly)
             
-            # Status code anomaly detection
+            # Status code anomaly detection - only flag error status codes
             if 'status_code' in df.columns and len(df) >= 10:
                 status_codes = df[['status_code']].values
                 status_codes_scaled = self.scalers['status_code_svm'].fit_transform(status_codes)
                 status_predictions = self.models['status_code_svm'].fit_predict(status_codes_scaled)
                 
                 for i, prediction in enumerate(status_predictions):
-                    if prediction == -1:
+                    if prediction == -1 and df.iloc[i]['status_code'] >= 400:  # Only flag 4xx/5xx errors
                         anomaly = {
                             'timestamp': df.iloc[i]['timestamp'],
                             'type': 'status_code_anomaly',

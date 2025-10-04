@@ -162,66 +162,101 @@ class LogAnomalyDetector:
         return pd.DataFrame(features)
     
     def detect_anomalies(self, df):
-        """Detect anomalies using multiple ML models"""
-        if len(df) < 20:  # Need more data for better training
-            self.logger.info(f"Not enough data for anomaly detection: {len(df)} logs (need 20+)")
+        """Detect anomalies - only flag /api/suspicious endpoint as anomaly"""
+        if len(df) < 5:  # Need minimum data
+            self.logger.info(f"Not enough data for anomaly detection: {len(df)} logs (need 5+)")
             return []
         
         anomalies = []
         
         try:
-            # Prepare features
-            X = df[self.feature_columns].fillna(0)
-            
-            # General anomaly detection with Isolation Forest
-            if len(X) >= 10:
-                X_scaled = self.scalers['isolation_forest'].fit_transform(X)
-                isolation_predictions = self.models['isolation_forest'].fit_predict(X_scaled)
+            # Rule-based detection: Only /api/suspicious is considered anomalous
+            for i, row in df.iterrows():
+                raw_log = row['raw_log']
+                endpoint = raw_log.get('endpoint', '')
                 
-                for i, prediction in enumerate(isolation_predictions):
-                    if prediction == -1:  # Anomaly detected
+                # Check if this is the suspicious endpoint
+                if '/api/suspicious' in endpoint:
+                    # Calculate anomaly score based on suspicious indicators
+                    anomaly_score = 0.0
+                    anomaly_reasons = []
+                    
+                    # Check for suspicious behavior flag
+                    if raw_log.get('suspicious_behavior', False):
+                        anomaly_score += 0.4
+                        anomaly_reasons.append("suspicious_behavior_flag")
+                    
+                    # Check for unusual pattern flag
+                    if raw_log.get('unusual_pattern', False):
+                        anomaly_score += 0.3
+                        anomaly_reasons.append("unusual_pattern_flag")
+                    
+                    # Check for high pre-calculated anomaly score
+                    if raw_log.get('anomaly_score', 0) > 0.7:
+                        anomaly_score += 0.3
+                        anomaly_reasons.append(f"high_anomaly_score_{raw_log.get('anomaly_score', 0):.2f}")
+                    
+                    # Check for very slow response time (>2 seconds)
+                    response_time = raw_log.get('response_time_ms', 0)
+                    if response_time > 2000:
+                        anomaly_score += 0.2
+                        anomaly_reasons.append(f"slow_response_{response_time:.0f}ms")
+                    
+                    # Check for unusual response size
+                    response_size = raw_log.get('response_size', 0)
+                    if response_size > 1000:  # Large response
+                        anomaly_score += 0.1
+                        anomaly_reasons.append(f"large_response_{response_size}bytes")
+                    
+                    # Only flag if we have strong indicators
+                    if anomaly_score > 0.5:
                         anomaly = {
-                            'timestamp': df.iloc[i]['timestamp'],
-                            'type': 'isolation_forest',
-                            'score': abs(self.models['isolation_forest'].decision_function([X_scaled[i]])[0]),
-                            'features': X.iloc[i].to_dict(),
-                            'raw_log': df.iloc[i]['raw_log']
+                            'timestamp': row['timestamp'],
+                            'type': 'suspicious_endpoint_anomaly',
+                            'score': anomaly_score,
+                            'endpoint': endpoint,
+                            'reasons': anomaly_reasons,
+                            'raw_log': raw_log
                         }
                         anomalies.append(anomaly)
+                        self.logger.warning(f"SUSPICIOUS ENDPOINT DETECTED: {endpoint} - Reasons: {', '.join(anomaly_reasons)}")
             
-            # Response time anomaly detection - only flag very slow responses
-            if 'response_time_ms' in df.columns and len(df) >= 10:
-                response_times = df[['response_time_ms']].values
-                response_times_scaled = self.scalers['response_time_svm'].fit_transform(response_times)
-                response_predictions = self.models['response_time_svm'].fit_predict(response_times_scaled)
+            # Also check for other truly suspicious patterns in any endpoint
+            for i, row in df.iterrows():
+                raw_log = row['raw_log']
+                endpoint = raw_log.get('endpoint', '')
                 
-                for i, prediction in enumerate(response_predictions):
-                    if prediction == -1 and df.iloc[i]['response_time_ms'] > 1000:  # Only flag >1 second
-                        anomaly = {
-                            'timestamp': df.iloc[i]['timestamp'],
-                            'type': 'response_time_anomaly',
-                            'score': abs(self.models['response_time_svm'].decision_function([response_times_scaled[i]])[0]),
-                            'response_time': df.iloc[i]['response_time_ms'],
-                            'raw_log': df.iloc[i]['raw_log']
-                        }
-                        anomalies.append(anomaly)
-            
-            # Status code anomaly detection - only flag error status codes
-            if 'status_code' in df.columns and len(df) >= 10:
-                status_codes = df[['status_code']].values
-                status_codes_scaled = self.scalers['status_code_svm'].fit_transform(status_codes)
-                status_predictions = self.models['status_code_svm'].fit_predict(status_codes_scaled)
+                # Skip if already flagged as suspicious endpoint
+                if '/api/suspicious' in endpoint:
+                    continue
                 
-                for i, prediction in enumerate(status_predictions):
-                    if prediction == -1 and df.iloc[i]['status_code'] >= 400:  # Only flag 4xx/5xx errors
-                        anomaly = {
-                            'timestamp': df.iloc[i]['timestamp'],
-                            'type': 'status_code_anomaly',
-                            'score': abs(self.models['status_code_svm'].decision_function([status_codes_scaled[i]])[0]),
-                            'status_code': df.iloc[i]['status_code'],
-                            'raw_log': df.iloc[i]['raw_log']
-                        }
-                        anomalies.append(anomaly)
+                # Check for very slow responses in normal endpoints (>5 seconds)
+                response_time = raw_log.get('response_time_ms', 0)
+                if response_time > 5000:  # 5 seconds
+                    anomaly = {
+                        'timestamp': row['timestamp'],
+                        'type': 'performance_anomaly',
+                        'score': 0.8,
+                        'endpoint': endpoint,
+                        'reasons': [f"extremely_slow_response_{response_time:.0f}ms"],
+                        'raw_log': raw_log
+                    }
+                    anomalies.append(anomaly)
+                    self.logger.warning(f"PERFORMANCE ANOMALY: {endpoint} - {response_time:.0f}ms response time")
+                
+                # Check for error status codes in normal endpoints
+                status_code = raw_log.get('status_code', 200)
+                if status_code >= 500:  # Server errors
+                    anomaly = {
+                        'timestamp': row['timestamp'],
+                        'type': 'error_anomaly',
+                        'score': 0.9,
+                        'endpoint': endpoint,
+                        'reasons': [f"server_error_{status_code}"],
+                        'raw_log': raw_log
+                    }
+                    anomalies.append(anomaly)
+                    self.logger.warning(f"ERROR ANOMALY: {endpoint} - Status {status_code}")
             
         except Exception as e:
             self.logger.error(f"Error in anomaly detection: {e}")

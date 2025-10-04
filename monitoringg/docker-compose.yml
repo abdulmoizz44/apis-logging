@@ -7,6 +7,8 @@ services:
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
 
   promtail:
     image: grafana/promtail:2.9.3
@@ -24,6 +26,19 @@ services:
       - "3000:3000"
     depends_on:
       - loki
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: app
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+    restart: unless-stopped
 
   anomaly-detector:
     build:
@@ -38,3 +53,9 @@ services:
     volumes:
       - ./anomaly_detector.py:/app/anomaly_detector.py
       - ./anomaly_requirements.txt:/app/anomaly_requirements.txt
+      - anomaly_data:/app/data
+
+volumes:
+  loki_data:
+  grafana_data:
+  anomaly_data:

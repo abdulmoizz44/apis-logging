@@ -1,0 +1,103 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Log Anomaly Detection Dashboard",
+    "tags": ["anomaly", "logs", "ml"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Anomaly Detection Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(rate({service=\"anomaly_detector\"}[5m]))",
+            "legendFormat": "Anomalies/min"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 5}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Anomaly Types",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum by (anomaly_type) (rate({service=\"anomaly_detector\"}[5m]))",
+            "legendFormat": "{{anomaly_type}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Recent Anomalies Timeline",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate({service=\"anomaly_detector\"}[1m]))",
+            "legendFormat": "Anomalies/min"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Anomaly Details Table",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "{service=\"anomaly_detector\"} |= \"ANOMALY DETECTED\"",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "Response Time Anomalies",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "avg_over_time({service=\"anomaly_detector\"} | json | response_time_ms [5m])",
+            "legendFormat": "Avg Response Time"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+      },
+      {
+        "id": 6,
+        "title": "Status Code Distribution",
+        "type": "bargauge",
+        "targets": [
+          {
+            "expr": "sum by (status_code) (rate({container=\"app\"} | json | status_code [5m]))",
+            "legendFormat": "{{status_code}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}

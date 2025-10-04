@@ -26,8 +26,12 @@ services:
       - loki
 
   anomaly-detector:
-    build: ../anomaly
+    build:
+      context: ..
+      dockerfile: anomaly/Dockerfile
+    container_name: anomaly-detector
     depends_on:
-      - grafana
-    restart: always
-
+      - loki
+    environment:
+      - LOKI_URL=http://loki:3100
+    restart: unless-stopped

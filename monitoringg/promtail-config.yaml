@@ -16,3 +16,7 @@ scrape_configs:
       - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
         target_label: 'container'
+      - source_labels: ['__meta_docker_container_name']
+        regex: 'anomaly-detector'
+        target_label: 'anomaly_detector'
+        replacement: 'true'

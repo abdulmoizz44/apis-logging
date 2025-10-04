@@ -35,3 +35,6 @@ services:
     environment:
       - LOKI_URL=http://loki:3100
     restart: unless-stopped
+    volumes:
+      - ./anomaly_detector.py:/app/anomaly_detector.py
+      - ./anomaly_requirements.txt:/app/anomaly_requirements.txt

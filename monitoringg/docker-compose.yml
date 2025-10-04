@@ -24,3 +24,11 @@ services:
       - "3000:3000"
     depends_on:
       - loki
+
+  anomaly-detector:
+    build: ../anomaly
+    depends_on:
+      - prometheus
+      - pushgateway
+    restart: always
+
